@@ -376,6 +376,7 @@ public class VillagerTrader extends Module {
                         setState(State.EVAL_RESTOCK);
                     } else {
                         // All villagers have been tried
+                        logTradeStatus("All Villagers Tried");
                         if (countItem(trade.getOutputItem().id()) > 0) {
                             // Store output items first, then wait for restock
                             setState(State.STORE_GO_TO_CHEST);
@@ -764,29 +765,8 @@ public class VillagerTrader extends Module {
                 }
             }
             case NEXT_TRADE -> {
-                var trade = tradeIterator.current();
-                var nextTrade = tradeIterator.next();
-                var tradeDuration = Duration.ofNanos(System.nanoTime() - tradeStartTime);
-                var tradeResult = Embed.builder()
-                    .title("Trade Completed")
-                    .addField("Trade ID", Objects.requireNonNullElse(getTradeId(trade), "?"))
-                    .addField("Duration", MathHelper.formatDuration(tradeDuration))
-                    .addField("Input 1", trade.inputItem1)
-                    .addField("Input 1 Sell Count", input1SellCount);
-                if (trade.has2InputTrade()) {
-                    tradeResult
-                        .addField("Input 2", trade.inputItem2)
-                        .addField("Input 2 Sell Count", input2SellCount);
-                }
-                tradeResult
-                    .addField("Output", trade.outputItem)
-                    .addField("Output Buy Count", outputBuyCount)
-                    .addField("Next Trade", Objects.requireNonNullElse(getTradeId(nextTrade), "?"));
-                if (PLUGIN_CONFIG.logTradeStatusToDiscord) {
-                    discordNotification(tradeResult);
-                } else {
-                    info(EmbedSerializer.serialize(tradeResult));
-                }
+                logTradeStatus("Trade Completed");
+                tradeIterator.next();
                 setState(State.ENTRYPOINT);
             }
             case AWAIT_RESTOCK -> {
@@ -796,6 +776,30 @@ public class VillagerTrader extends Module {
                     setState(State.EVAL_RESTOCK);
                 }
             }
+        }
+    }
+
+    private void logTradeStatus(String title) {
+        var trade = tradeIterator.current();
+        var tradeDuration = Duration.ofNanos(System.nanoTime() - tradeStartTime);
+        var tradeResult = Embed.builder()
+            .title(title)
+            .addField("Trade ID", Objects.requireNonNullElse(getTradeId(trade), "?"))
+            .addField("Duration", MathHelper.formatDuration(tradeDuration))
+            .addField("Input 1", trade.inputItem1)
+            .addField("Input 1 Sell Count", input1SellCount);
+        if (trade.has2InputTrade()) {
+            tradeResult
+                .addField("Input 2", trade.inputItem2)
+                .addField("Input 2 Sell Count", input2SellCount);
+        }
+        tradeResult
+            .addField("Output", trade.outputItem)
+            .addField("Output Buy Count", outputBuyCount);
+        if (PLUGIN_CONFIG.logTradeStatusToDiscord) {
+            discordNotification(tradeResult);
+        } else {
+            info(EmbedSerializer.serialize(tradeResult));
         }
     }
 
