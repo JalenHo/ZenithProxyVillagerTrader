@@ -13,6 +13,7 @@ import static dev.zenith.trader.module.VillagerTrader.VillagerProfession;
 public class VillagerTraderConfig {
     public boolean enabled = false;
     public long waitForInteractTimeoutTicks = 20L;
+    public long restockWaitTicks = 6000L; // 5 minutes (6000 ticks / 20 tps)
     public boolean logTradeStatusToDiscord = false;
 
     public LinkedHashMap<String, Trade> trades = new LinkedHashMap<>();
@@ -24,6 +25,7 @@ public class VillagerTraderConfig {
         public String inputItem2 = ItemRegistry.AIR.name();
         public String outputItem = ItemRegistry.AIR.name();
         public BlockPos inputItem1Chest = BlockPos.ZERO;
+        public BlockPos inputItem1BackupChest = BlockPos.ZERO;
         public BlockPos inputItem2Chest = BlockPos.ZERO;
         public BlockPos outputChest = BlockPos.ZERO;
         public int inputItem1RestockStacks = 4;
@@ -44,6 +46,10 @@ public class VillagerTraderConfig {
 
         public boolean has2InputTrade() {
             return !Objects.equals(inputItem2, ItemRegistry.AIR.name());
+        }
+
+        public boolean hasInputItem1BackupChest() {
+            return !inputItem1BackupChest.equals(BlockPos.ZERO);
         }
 
         public boolean hasEmeraldInputs() {

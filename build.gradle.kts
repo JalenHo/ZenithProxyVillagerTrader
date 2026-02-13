@@ -12,7 +12,7 @@ zenithProxyPlugin {
     templateProperties = mapOf(
         "version" to project.version
     )
-    javaReleaseVersion = JavaLanguageVersion.of(21)
+    javaReleaseVersion = JavaLanguageVersion.of(25)
 }
 
 repositories {

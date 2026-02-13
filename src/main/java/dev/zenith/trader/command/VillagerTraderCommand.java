@@ -44,6 +44,7 @@ public class VillagerTraderCommand extends Command {
               See `set help` for additional commands that modify trade settings, like enchantments, post trade storage modes, and restock amounts.
               
               `waitForInteractTimeout` -> timeout for server interactions like opening villager trade window
+              `restockWaitTime` -> how long to wait when all villagers are out of stock before retrying (default: 6000 ticks = 5 min)
               """)
             .usageLines(
                 "on/off",
@@ -54,6 +55,7 @@ public class VillagerTraderCommand extends Command {
                 "list",
                 "set help",
                 "waitForInteractTimeout <ticks>",
+                "restockWaitTime <ticks>",
                 "logTradeStatusToDiscord on/off"
             )
             .build();
@@ -149,6 +151,7 @@ public class VillagerTraderCommand extends Command {
                         "set <id> inputItem2 <item>",
                         "set <id> outputItem <item>",
                         "set <id> inputItem1Chest <x> <y> <z>",
+                        "set <id> inputItem1BackupChest <x> <y> <z>",
                         "set <id> inputItem2Chest <x> <y> <z>",
                         "set <id> outputChest <x> <y> <z>",
                         "set <id> maxInput1PerTrade <count>",
@@ -282,6 +285,29 @@ public class VillagerTraderCommand extends Command {
                         trade.inputItem1Chest = inputItem1Chest;
                         c.getSource().getEmbed()
                             .title("Input Item 1 Chest Set")
+                            .description(printTrade(id, trade));
+                        return OK;
+                    })))
+                    .then(literal("inputItem1BackupChest").then(argument("inputItem1BackupChest", blockPos()).executes(c -> {
+                        var id = CustomStringArgumentType.getString(c, "id");
+                        if (!PLUGIN_CONFIG.trades.containsKey(id)) {
+                            c.getSource().getEmbed()
+                                .title("Trade ID Not Found")
+                                .addField("ID", id)
+                                .description(printAllTrades());
+                            c.getSource().getData().put("list", true);
+                            return ERROR;
+                        }
+                        var trade = PLUGIN_CONFIG.trades.get(id);
+                        var backupChest = getBlockPos(c, "inputItem1BackupChest");
+                        if (World.isChunkLoadedBlockPos(backupChest.x(), backupChest.z())) {
+                            var backupChestBlock = World.getBlock(backupChest);
+                            c.getSource().getEmbed()
+                                .addField("Block At Backup Input 1 Pos", backupChestBlock.name());
+                        }
+                        trade.inputItem1BackupChest = backupChest;
+                        c.getSource().getEmbed()
+                            .title("Input Item 1 Backup Chest Set")
                             .description(printTrade(id, trade));
                         return OK;
                     })))
@@ -604,6 +630,13 @@ public class VillagerTraderCommand extends Command {
                 c.getSource().getEmbed()
                     .title("Wait For Interact Timeout Set");
             })))
+            .then(literal("restockWaitTime").then(argument("ticks", time()).executes(c -> {
+                PLUGIN_CONFIG.restockWaitTicks = getInteger(c, "ticks");
+                c.getSource().getEmbed()
+                    .title("Restock Wait Time Set")
+                    .addField("Ticks", PLUGIN_CONFIG.restockWaitTicks)
+                    .addField("Seconds", PLUGIN_CONFIG.restockWaitTicks / 20);
+            })))
             .then(literal("logTradeStatusToDiscord").then(argument("toggle", toggle()).executes(c -> {
                 PLUGIN_CONFIG.logTradeStatusToDiscord = getToggle(c, "toggle");
                 c.getSource().getEmbed()
@@ -617,6 +650,7 @@ public class VillagerTraderCommand extends Command {
             ctx.getEmbed()
                 .addField("Villager Trader", toggleStr(PLUGIN_CONFIG.enabled))
                 .addField("Wait For Interact Timeout", PLUGIN_CONFIG.waitForInteractTimeoutTicks + " ticks")
+                .addField("Restock Wait Time", PLUGIN_CONFIG.restockWaitTicks + " ticks (" + (PLUGIN_CONFIG.restockWaitTicks / 20) + "s)")
                 .addField("Log Trade Status To Discord", PLUGIN_CONFIG.logTradeStatusToDiscord);
         }
         ctx.getEmbed()

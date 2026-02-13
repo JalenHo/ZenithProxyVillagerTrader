@@ -215,7 +215,65 @@ public class VillagerTrader extends Module {
                     var input1 = ItemRegistry.REGISTRY.get(trade.inputItem1);
                     int input1Count = countItem(input1.id());
                     if (trade.inputItem1RestockCountThreshold > input1Count) {
+                        if (trade.hasInputItem1BackupChest()) {
+                            info("Primary chest didn't have enough {}, trying backup chest", input1.name());
+                            setState(State.RESTOCK_INPUT_1_BACKUP_GO_TO_CHEST);
+                            return;
+                        }
                         error("Failed restocking sufficient {} for trade: {}", input1.name(), trade.outputItem);
+                    }
+                    if (trade.has2InputTrade()) {
+                        setState(State.RESTOCK_INPUT_2_GO_TO_CHEST);
+                    } else {
+                        setState(State.CRAFT_EMERALD_BLOCKS);
+                    }
+                }
+            }
+            case RESTOCK_INPUT_1_BACKUP_GO_TO_CHEST -> {
+                var trade = tradeIterator.current();
+                restockPathingFuture = BARITONE.rightClickBlock(trade.inputItem1BackupChest.x(), trade.inputItem1BackupChest.y(), trade.inputItem1BackupChest.z());
+                restockPathingFuture.addExecutedListener(f -> waitForInteractTimer.reset());
+                setState(State.RESTOCK_INPUT_1_BACKUP_WITHDRAW);
+            }
+            case RESTOCK_INPUT_1_BACKUP_WITHDRAW -> {
+                if (restockPathingFuture.isCompleted()) {
+                    var trade = tradeIterator.current();
+                    var input1 = ItemRegistry.REGISTRY.get(trade.inputItem1);
+                    var openContainer = CACHE.getPlayerCache().getInventoryCache().getOpenContainer();
+                    if (openContainer.getContainerId() != 0) {
+                        var actions = Lists.newArrayList(
+                            InventoryActionMacros.withdraw(
+                                openContainer.getContainerId(),
+                                i -> {
+                                    if (input1 == ItemRegistry.EMERALD) {
+                                        return i.getId() == input1.id() || i.getId() == ItemRegistry.EMERALD_BLOCK.id();
+                                    }
+                                    return i.getId() == input1.id();
+                                },
+                                trade.inputItem1RestockStacks));
+                        actions.add(new CloseContainer(openContainer.getContainerId()));
+                        var request = InventoryActionRequest.builder()
+                            .owner(this)
+                            .actions(actions)
+                            .priority(getPriority())
+                            .build();
+                        restockWithdrawFuture = INVENTORY.submit(request);
+                        setState(State.RESTOCK_INPUT_1_BACKUP_AWAIT_WITHDRAW);
+                    } else {
+                        if (waitForInteractTimer.tick(PLUGIN_CONFIG.waitForInteractTimeoutTicks)) {
+                            error("Timed out waiting for backup input 1 container to open");
+                            setState(State.RESTOCK_INPUT_1_BACKUP_AWAIT_WITHDRAW);
+                        }
+                    }
+                }
+            }
+            case RESTOCK_INPUT_1_BACKUP_AWAIT_WITHDRAW -> {
+                if (restockWithdrawFuture.isCompleted()) {
+                    var trade = tradeIterator.current();
+                    var input1 = ItemRegistry.REGISTRY.get(trade.inputItem1);
+                    int input1Count = countItem(input1.id());
+                    if (trade.inputItem1RestockCountThreshold > input1Count) {
+                        error("Failed restocking sufficient {} from both primary and backup chests for trade: {}", input1.name(), trade.outputItem);
                     }
                     if (trade.has2InputTrade()) {
                         setState(State.RESTOCK_INPUT_2_GO_TO_CHEST);
@@ -317,8 +375,16 @@ public class VillagerTrader extends Module {
                         warn("No villagers found to trade with, going back to restock chest");
                         setState(State.EVAL_RESTOCK);
                     } else {
+                        // All villagers have been tried
                         if (countItem(trade.getOutputItem().id()) > 0) {
+                            // Store output items first, then wait for restock
                             setState(State.STORE_GO_TO_CHEST);
+                        } else if (PLUGIN_CONFIG.restockWaitTicks > 0) {
+                            // No output items, wait for villagers to restock
+                            info("All villagers out of stock, waiting {} ticks ({} seconds) for restock...",
+                                PLUGIN_CONFIG.restockWaitTicks, PLUGIN_CONFIG.restockWaitTicks / 20);
+                            waitForRestockTimer.reset();
+                            setState(State.AWAIT_RESTOCK);
                         } else {
                             setState(State.READY_NEXT_TRADE);
                         }
@@ -351,33 +417,33 @@ public class VillagerTrader extends Module {
             }
             case TRADING_TRY_START_PURCHASE -> {
                 var trade = tradeIterator.current();
-                var trades = offersPacket.getTrades();
+                var offers = offersPacket.getOffers();
                 List<InventoryAction> actions = Lists.newArrayList();
-                for (int i = 0; i < trades.length; i++) {
-                    var villagerTrade = trades[i];
-                    if (villagerTrade.isTradeDisabled()) continue;
-                    if (villagerTrade.getOutput() == null) continue;
-                    if (villagerTrade.getOutput().getId() != ItemRegistry.REGISTRY.get(trade.outputItem).id()) continue;
-                    if (villagerTrade.getFirstInput().getId() != ItemRegistry.REGISTRY.get(trade.inputItem1).id()) continue;
+                for (int i = 0; i < offers.size(); i++) {
+                    var villagerTrade = offers.get(i);
+                    if (villagerTrade.isOutOfStock()) continue;
+                    if (villagerTrade.getResult() == null) continue;
+                    if (villagerTrade.getResult().getId() != ItemRegistry.REGISTRY.get(trade.outputItem).id()) continue;
+                    if (villagerTrade.getItemCostA().itemId() != ItemRegistry.REGISTRY.get(trade.inputItem1).id()) continue;
                     if (trade.has2InputTrade()) {
-                        if (villagerTrade.getSecondInput() == null) continue;
-                        if (villagerTrade.getSecondInput().getId() != ItemRegistry.REGISTRY.get(trade.inputItem2).id()) continue;
+                        if (villagerTrade.getItemCostB() == null) continue;
+                        if (villagerTrade.getItemCostB().itemId() != ItemRegistry.REGISTRY.get(trade.inputItem2).id()) continue;
                     } else {
-                        if (villagerTrade.getSecondInput() != null) continue;
+                        if (villagerTrade.getItemCostB() != null) continue;
                     }
                     if (!trade.outputItemEnchantments.isEmpty()) {
-                        if (!enchantmentFilter(trade, villagerTrade.getOutput())) {
+                        if (!enchantmentFilter(trade, villagerTrade.getResult())) {
                             continue;
                         }
                     }
 
-                    int availableTradeCount = villagerTrade.getMaxUses() - villagerTrade.getNumUses(); // each shift click can consume many trades
+                    int availableTradeCount = villagerTrade.getMaxUses() - villagerTrade.getUses(); // each shift click can consume many trades
 
                     int input1StackSize = ItemRegistry.REGISTRY.get(trade.inputItem1).stackSize();
 
-                    int baseCostInput1 = villagerTrade.getFirstInput().getAmount();
-                    int input1DemandCost = Math.max(0, MathHelper.floorI((villagerTrade.getFirstInput().getAmount() * villagerTrade.getDemand() * villagerTrade.getPriceMultiplier())));
-                    int input1Cost = MathHelper.clamp(baseCostInput1 + input1DemandCost + villagerTrade.getSpecialPrice(), 1, input1StackSize);
+                    int baseCostInput1 = villagerTrade.getItemCostA().count();
+                    int input1DemandCost = Math.max(0, MathHelper.floorI((villagerTrade.getItemCostA().count() * villagerTrade.getDemand() * villagerTrade.getPriceMultiplier())));
+                    int input1Cost = MathHelper.clamp(baseCostInput1 + input1DemandCost + villagerTrade.getSpecialPriceDiff(), 1, input1StackSize);
                     if (input1Cost > trade.maxInput1PerTrade) continue;
                     int maxTradesPerInputStack = input1StackSize / input1Cost;
                     int input1Count = countItem(trade.getInputItem1().id());
@@ -390,11 +456,11 @@ public class VillagerTrader extends Module {
 
                     if (trade.has2InputTrade()) {
                         int input2StackSize = trade.has2InputTrade() ? 64 : ItemRegistry.REGISTRY.get(trade.inputItem2).stackSize();
-                        int baseCostInput2 = villagerTrade.getSecondInput().getAmount();
-                        int input2DemandCost = Math.max(0, MathHelper.floorI((villagerTrade.getSecondInput().getAmount() * villagerTrade.getDemand() * villagerTrade.getPriceMultiplier())));
-                        int input2Cost = MathHelper.clamp(baseCostInput2 + input2DemandCost + villagerTrade.getSpecialPrice(), 1, input2StackSize);
+                        int baseCostInput2 = villagerTrade.getItemCostB().count();
+                        int input2DemandCost = Math.max(0, MathHelper.floorI((villagerTrade.getItemCostB().count() * villagerTrade.getDemand() * villagerTrade.getPriceMultiplier())));
+                        int input2Cost = MathHelper.clamp(baseCostInput2 + input2DemandCost + villagerTrade.getSpecialPriceDiff(), 1, input2StackSize);
                         if (input2Cost > trade.maxInput2PerTrade) continue;
-                        int tradersPerInput2Stack = villagerTrade.getSecondInput().getAmount() / input2Cost;
+                        int tradersPerInput2Stack = villagerTrade.getItemCostB().count() / input2Cost;
                         maxTradesPerInputStack = Math.min(maxTradesPerInputStack, tradersPerInput2Stack);
                         int input2Count = countItem(trade.getInputItem2().id());
                         int maxTradesForInput2 = input2Count / input2Cost;
@@ -406,8 +472,8 @@ public class VillagerTrader extends Module {
                     }
 
                     if (canShiftClickPurchase(villagerTrade)) {
-                        int outputsStackSize = ItemRegistry.REGISTRY.get(villagerTrade.getOutput().getId()).stackSize();
-                        int maxTradesPerOutputStack = outputsStackSize / villagerTrade.getOutput().getAmount();
+                        int outputsStackSize = ItemRegistry.REGISTRY.get(villagerTrade.getResult().getId()).stackSize();
+                        int maxTradesPerOutputStack = outputsStackSize / villagerTrade.getResult().getAmount();
                         int maxTradesPerShiftClick = Math.min(maxTradesPerInputStack, maxTradesPerOutputStack);
                         int tradeCount = 0;
                         for (int j = 0; j < maxTradeCount; j+= maxTradesPerShiftClick) {
@@ -723,6 +789,13 @@ public class VillagerTrader extends Module {
                 }
                 setState(State.ENTRYPOINT);
             }
+            case AWAIT_RESTOCK -> {
+                if (waitForRestockTimer.tick(PLUGIN_CONFIG.restockWaitTicks)) {
+                    info("Restock wait complete, retrying villager trades");
+                    interactedVillagersCache.invalidateAll();
+                    setState(State.EVAL_RESTOCK);
+                }
+            }
         }
     }
 
@@ -822,13 +895,13 @@ public class VillagerTrader extends Module {
 
     private boolean canShiftClickPurchase(VillagerTrade villagerTrade) {
         int count = 0;
-        for (var offer : offersPacket.getTrades()) {
-            if (villagerTrade.getOutput().getId() != offer.getOutput().getId()) continue;
-            if (villagerTrade.getFirstInput().getId() != offer.getFirstInput().getId()) continue;
-            boolean offerHasInput2 = offer.getSecondInput() != Container.EMPTY_STACK;
-            boolean villagerTradeHasInput2 = villagerTrade.getSecondInput() != Container.EMPTY_STACK;
+        for (var offer : offersPacket.getOffers()) {
+            if (villagerTrade.getResult().getId() != offer.getResult().getId()) continue;
+            if (villagerTrade.getItemCostA().itemId() != offer.getItemCostA().itemId()) continue;
+            boolean offerHasInput2 = offer.getItemCostB() != null;
+            boolean villagerTradeHasInput2 = villagerTrade.getItemCostB() != null;
             if (offerHasInput2 && villagerTradeHasInput2) {
-                if (villagerTrade.getSecondInput().getId() == offer.getSecondInput().getId()) {
+                if (villagerTrade.getItemCostB().itemId() == offer.getItemCostB().itemId()) {
                     count++;
                 }
             } else if (!offerHasInput2 && !villagerTradeHasInput2) {
@@ -872,6 +945,9 @@ public class VillagerTrader extends Module {
         RESTOCK_INPUT_1_GO_TO_CHEST,
         RESTOCK_INPUT_1_WITHDRAW,
         RESTOCK_INPUT_1_AWAIT_WITHDRAW,
+        RESTOCK_INPUT_1_BACKUP_GO_TO_CHEST,
+        RESTOCK_INPUT_1_BACKUP_WITHDRAW,
+        RESTOCK_INPUT_1_BACKUP_AWAIT_WITHDRAW,
         RESTOCK_INPUT_2_GO_TO_CHEST,
         RESTOCK_INPUT_2_WITHDRAW,
         RESTOCK_INPUT_2_AWAIT_WITHDRAW,
