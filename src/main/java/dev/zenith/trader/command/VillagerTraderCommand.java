@@ -151,7 +151,10 @@ public class VillagerTraderCommand extends Command {
                         "set <id> inputItem2 <item>",
                         "set <id> outputItem <item>",
                         "set <id> inputItem1Chest <x> <y> <z>",
-                        "set <id> inputItem1BackupChest <x> <y> <z>",
+                        "set <id> backupChests add <x> <y> <z>",
+                        "set <id> backupChests del <index>",
+                        "set <id> backupChests list",
+                        "set <id> backupChests clear",
                         "set <id> inputItem2Chest <x> <y> <z>",
                         "set <id> outputChest <x> <y> <z>",
                         "set <id> maxInput1PerTrade <count>",
@@ -288,29 +291,89 @@ public class VillagerTraderCommand extends Command {
                             .description(printTrade(id, trade));
                         return OK;
                     })))
-                    .then(literal("inputItem1BackupChest").then(argument("inputItem1BackupChest", blockPos()).executes(c -> {
-                        var id = CustomStringArgumentType.getString(c, "id");
-                        if (!PLUGIN_CONFIG.trades.containsKey(id)) {
+                    .then(literal("backupChests")
+                        .then(literal("add").then(argument("backupChestPos", blockPos()).executes(c -> {
+                            var id = CustomStringArgumentType.getString(c, "id");
+                            if (!PLUGIN_CONFIG.trades.containsKey(id)) {
+                                c.getSource().getEmbed()
+                                    .title("Trade ID Not Found")
+                                    .addField("ID", id)
+                                    .description(printAllTrades());
+                                c.getSource().getData().put("list", true);
+                                return ERROR;
+                            }
+                            var trade = PLUGIN_CONFIG.trades.get(id);
+                            var backupChest = getBlockPos(c, "backupChestPos");
+                            if (World.isChunkLoadedBlockPos(backupChest.x(), backupChest.z())) {
+                                var backupChestBlock = World.getBlock(backupChest);
+                                c.getSource().getEmbed()
+                                    .addField("Block At Pos", backupChestBlock.name());
+                            }
+                            trade.inputItem1BackupChests.add(backupChest);
                             c.getSource().getEmbed()
-                                .title("Trade ID Not Found")
-                                .addField("ID", id)
-                                .description(printAllTrades());
+                                .title("Backup Chest Added (#" + trade.inputItem1BackupChests.size() + ")")
+                                .description(printBackupChests(trade));
                             c.getSource().getData().put("list", true);
-                            return ERROR;
-                        }
-                        var trade = PLUGIN_CONFIG.trades.get(id);
-                        var backupChest = getBlockPos(c, "inputItem1BackupChest");
-                        if (World.isChunkLoadedBlockPos(backupChest.x(), backupChest.z())) {
-                            var backupChestBlock = World.getBlock(backupChest);
+                            return OK;
+                        })))
+                        .then(literal("del").then(argument("chestIndex", integer(1)).executes(c -> {
+                            var id = CustomStringArgumentType.getString(c, "id");
+                            if (!PLUGIN_CONFIG.trades.containsKey(id)) {
+                                c.getSource().getEmbed()
+                                    .title("Trade ID Not Found")
+                                    .addField("ID", id)
+                                    .description(printAllTrades());
+                                c.getSource().getData().put("list", true);
+                                return ERROR;
+                            }
+                            var trade = PLUGIN_CONFIG.trades.get(id);
+                            var index = getInteger(c, "chestIndex") - 1; // user-facing is 1-based
+                            if (index < 0 || index >= trade.inputItem1BackupChests.size()) {
+                                c.getSource().getEmbed()
+                                    .title("Invalid Backup Chest Index")
+                                    .addField("Valid Range", "1 - " + trade.inputItem1BackupChests.size());
+                                return ERROR;
+                            }
+                            trade.inputItem1BackupChests.remove(index);
                             c.getSource().getEmbed()
-                                .addField("Block At Backup Input 1 Pos", backupChestBlock.name());
-                        }
-                        trade.inputItem1BackupChest = backupChest;
-                        c.getSource().getEmbed()
-                            .title("Input Item 1 Backup Chest Set")
-                            .description(printTrade(id, trade));
-                        return OK;
-                    })))
+                                .title("Backup Chest Removed")
+                                .description(printBackupChests(trade));
+                            c.getSource().getData().put("list", true);
+                            return OK;
+                        })))
+                        .then(literal("list").executes(c -> {
+                            var id = CustomStringArgumentType.getString(c, "id");
+                            if (!PLUGIN_CONFIG.trades.containsKey(id)) {
+                                c.getSource().getEmbed()
+                                    .title("Trade ID Not Found")
+                                    .addField("ID", id)
+                                    .description(printAllTrades());
+                                c.getSource().getData().put("list", true);
+                                return ERROR;
+                            }
+                            var trade = PLUGIN_CONFIG.trades.get(id);
+                            c.getSource().getEmbed()
+                                .title("Backup Chests for Trade: " + id)
+                                .description(printBackupChests(trade));
+                            c.getSource().getData().put("list", true);
+                            return OK;
+                        }))
+                        .then(literal("clear").executes(c -> {
+                            var id = CustomStringArgumentType.getString(c, "id");
+                            if (!PLUGIN_CONFIG.trades.containsKey(id)) {
+                                c.getSource().getEmbed()
+                                    .title("Trade ID Not Found")
+                                    .addField("ID", id)
+                                    .description(printAllTrades());
+                                c.getSource().getData().put("list", true);
+                                return ERROR;
+                            }
+                            var trade = PLUGIN_CONFIG.trades.get(id);
+                            trade.inputItem1BackupChests.clear();
+                            c.getSource().getEmbed()
+                                .title("All Backup Chests Cleared");
+                            return OK;
+                        })))
                     .then(literal("inputItem2Chest").then(argument("inputItem2Chest", blockPos()).executes(c -> {
                         var id = CustomStringArgumentType.getString(c, "id");
                         if (!PLUGIN_CONFIG.trades.containsKey(id)) {
@@ -706,6 +769,20 @@ public class VillagerTraderCommand extends Command {
                 sb.append(", ");
             }
             sb.delete(sb.length() - 2, sb.length());
+        }
+        return sb.toString();
+    }
+
+    public String printBackupChests(VillagerTraderConfig.Trade trade) {
+        if (trade.inputItem1BackupChests.isEmpty()) {
+            return "No backup chests configured";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < trade.inputItem1BackupChests.size(); i++) {
+            var pos = trade.inputItem1BackupChests.get(i);
+            sb.append("#").append(i + 1).append(": `")
+                .append(pos.x()).append(" ").append(pos.y()).append(" ").append(pos.z())
+                .append("`\n");
         }
         return sb.toString();
     }

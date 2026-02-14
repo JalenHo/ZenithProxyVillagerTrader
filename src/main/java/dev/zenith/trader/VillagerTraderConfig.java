@@ -5,7 +5,9 @@ import com.zenith.mc.item.ItemData;
 import com.zenith.mc.item.ItemRegistry;
 import it.unimi.dsi.fastutil.objects.Object2IntLinkedOpenHashMap;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Objects;
 
 import static dev.zenith.trader.module.VillagerTrader.VillagerProfession;
@@ -25,7 +27,7 @@ public class VillagerTraderConfig {
         public String inputItem2 = ItemRegistry.AIR.name();
         public String outputItem = ItemRegistry.AIR.name();
         public BlockPos inputItem1Chest = BlockPos.ZERO;
-        public BlockPos inputItem1BackupChest = BlockPos.ZERO;
+        public List<BlockPos> inputItem1BackupChests = new ArrayList<>();
         public BlockPos inputItem2Chest = BlockPos.ZERO;
         public BlockPos outputChest = BlockPos.ZERO;
         public int inputItem1RestockStacks = 4;
@@ -48,8 +50,8 @@ public class VillagerTraderConfig {
             return !Objects.equals(inputItem2, ItemRegistry.AIR.name());
         }
 
-        public boolean hasInputItem1BackupChest() {
-            return !inputItem1BackupChest.equals(BlockPos.ZERO);
+        public boolean hasInputItem1BackupChests() {
+            return !inputItem1BackupChests.isEmpty();
         }
 
         public boolean hasEmeraldInputs() {

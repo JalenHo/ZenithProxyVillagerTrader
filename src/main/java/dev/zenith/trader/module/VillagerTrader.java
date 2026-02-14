@@ -68,6 +68,7 @@ public class VillagerTrader extends Module {
     private RequestFuture postTradeDepositFuture = RequestFuture.rejected;
     private final Timer waitForRestockTimer = Timers.tickTimer();
     private final Timer waitForInteractTimer = Timers.tickTimer();
+    private int backupChestIndex = 0;
     private int preTradeOutputCount = 0;
     private int preTradeInput1Count = 0;
     private int preTradeInput2Count = 0;
@@ -104,6 +105,7 @@ public class VillagerTrader extends Module {
         offersPacket = null;
         waitForInteractTimer.reset();
         waitForRestockTimer.reset();
+        backupChestIndex = 0;
         tradeIterator.reset();
         resetTradeCounter();
     }
@@ -215,8 +217,9 @@ public class VillagerTrader extends Module {
                     var input1 = ItemRegistry.REGISTRY.get(trade.inputItem1);
                     int input1Count = countItem(input1.id());
                     if (trade.inputItem1RestockCountThreshold > input1Count) {
-                        if (trade.hasInputItem1BackupChest()) {
-                            info("Primary chest didn't have enough {}, trying backup chest", input1.name());
+                        if (trade.hasInputItem1BackupChests()) {
+                            backupChestIndex = 0;
+                            info("Primary chest didn't have enough {}, trying backup chest #{}", input1.name(), backupChestIndex + 1);
                             setState(State.RESTOCK_INPUT_1_BACKUP_GO_TO_CHEST);
                             return;
                         }
@@ -231,7 +234,8 @@ public class VillagerTrader extends Module {
             }
             case RESTOCK_INPUT_1_BACKUP_GO_TO_CHEST -> {
                 var trade = tradeIterator.current();
-                restockPathingFuture = BARITONE.rightClickBlock(trade.inputItem1BackupChest.x(), trade.inputItem1BackupChest.y(), trade.inputItem1BackupChest.z());
+                var backupChest = trade.inputItem1BackupChests.get(backupChestIndex);
+                restockPathingFuture = BARITONE.rightClickBlock(backupChest.x(), backupChest.y(), backupChest.z());
                 restockPathingFuture.addExecutedListener(f -> waitForInteractTimer.reset());
                 setState(State.RESTOCK_INPUT_1_BACKUP_WITHDRAW);
             }
@@ -273,8 +277,18 @@ public class VillagerTrader extends Module {
                     var input1 = ItemRegistry.REGISTRY.get(trade.inputItem1);
                     int input1Count = countItem(input1.id());
                     if (trade.inputItem1RestockCountThreshold > input1Count) {
-                        error("Failed restocking sufficient {} from both primary and backup chests for trade: {}", input1.name(), trade.outputItem);
+                        // Try next backup chest if available
+                        backupChestIndex++;
+                        if (backupChestIndex < trade.inputItem1BackupChests.size()) {
+                            info("Backup chest #{} didn't have enough {}, trying backup chest #{}",
+                                backupChestIndex, input1.name(), backupChestIndex + 1);
+                            setState(State.RESTOCK_INPUT_1_BACKUP_GO_TO_CHEST);
+                            return;
+                        }
+                        error("Failed restocking sufficient {} from primary and all {} backup chests for trade: {}",
+                            input1.name(), trade.inputItem1BackupChests.size(), trade.outputItem);
                     }
+                    backupChestIndex = 0;
                     if (trade.has2InputTrade()) {
                         setState(State.RESTOCK_INPUT_2_GO_TO_CHEST);
                     } else {
