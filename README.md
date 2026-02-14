@@ -10,7 +10,7 @@ Includes automatic restocking, storing, multiple backup chests, restock waiting,
 
 * Updated to Minecraft 1.21.11/1.21.10
 * Added restock wait feature - bot pauses and retries when all villagers are out of stock
-* Added multiple backup chests - bot sequentially withdraws from backup chests when the primary input chest runs out
+* Added multiple backup chests - bot sequentially withdraws from backup chests when the primary input chest runs out, good for automatic farms
 * Fixed Discord trade status notifications not triggering during restock wait
 
 ## Usage
