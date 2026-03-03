@@ -6,6 +6,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Lists;
 import com.zenith.Proxy;
 import com.zenith.cache.data.entity.EntityLiving;
+import com.zenith.cache.data.entity.EntityPlayer;
 import com.zenith.cache.data.inventory.Container;
 import com.zenith.discord.Embed;
 import com.zenith.discord.EmbedSerializer;
@@ -139,6 +140,9 @@ public class VillagerTrader extends Module {
     private void onTick(ClientBotTick event) {
         if (Proxy.getInstance().isInQueue() || !CACHE.getPlayerCache().getThePlayer().isAlive()) {
             state = State.ENTRYPOINT;
+            return;
+        }
+        if (PLUGIN_CONFIG.autoDisableOnNonFriend && detectNonFriendPlayer()) {
             return;
         }
         switch (state) {
@@ -842,6 +846,28 @@ public class VillagerTrader extends Module {
             if (actualLevel >= desiredLevel) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    private boolean detectNonFriendPlayer() {
+        for (var entity : CACHE.getEntityCache().getEntities().values()) {
+            if (!(entity instanceof EntityPlayer playerEntity)) continue;
+            if (playerEntity.isSelfPlayer()) continue;
+            if (PLAYER_LISTS.getFriendsList().contains(playerEntity.getUuid())) continue;
+            var playerName = CACHE.getTabListCache().get(playerEntity.getUuid())
+                .map(e -> e.getName())
+                .orElse(playerEntity.getUuid().toString());
+            warn("Non-friend player '{}' detected in visual range. Auto-disabling trader.", playerName);
+            if (PLUGIN_CONFIG.logTradeStatusToDiscord) {
+                discordNotification(Embed.builder()
+                    .title("Trader Auto-Disabled")
+                    .addField("Reason", "Non-friend player detected in visual range")
+                    .addField("Player", playerName)
+                    .primaryColor());
+            }
+            stop();
+            return true;
         }
         return false;
     }

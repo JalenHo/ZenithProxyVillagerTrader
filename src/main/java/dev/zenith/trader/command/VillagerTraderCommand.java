@@ -56,7 +56,8 @@ public class VillagerTraderCommand extends Command {
                 "set help",
                 "waitForInteractTimeout <ticks>",
                 "restockWaitTime <ticks>",
-                "logTradeStatusToDiscord on/off"
+                "logTradeStatusToDiscord on/off",
+                "autoDisableOnNonFriend on/off"
             )
             .build();
     }
@@ -704,6 +705,11 @@ public class VillagerTraderCommand extends Command {
                 PLUGIN_CONFIG.logTradeStatusToDiscord = getToggle(c, "toggle");
                 c.getSource().getEmbed()
                     .title("Log Trade Status To Discord " + toggleStrCaps(PLUGIN_CONFIG.logTradeStatusToDiscord));
+            })))
+            .then(literal("autoDisableOnNonFriend").then(argument("toggle", toggle()).executes(c -> {
+                PLUGIN_CONFIG.autoDisableOnNonFriend = getToggle(c, "toggle");
+                c.getSource().getEmbed()
+                    .title("Auto Disable On Non-Friend " + toggleStrCaps(PLUGIN_CONFIG.autoDisableOnNonFriend));
             })));
     }
 
@@ -714,7 +720,8 @@ public class VillagerTraderCommand extends Command {
                 .addField("Villager Trader", toggleStr(PLUGIN_CONFIG.enabled))
                 .addField("Wait For Interact Timeout", PLUGIN_CONFIG.waitForInteractTimeoutTicks + " ticks")
                 .addField("Restock Wait Time", PLUGIN_CONFIG.restockWaitTicks + " ticks (" + (PLUGIN_CONFIG.restockWaitTicks / 20) + "s)")
-                .addField("Log Trade Status To Discord", PLUGIN_CONFIG.logTradeStatusToDiscord);
+                .addField("Log Trade Status To Discord", PLUGIN_CONFIG.logTradeStatusToDiscord)
+                .addField("Auto Disable On Non-Friend", PLUGIN_CONFIG.autoDisableOnNonFriend);
         }
         ctx.getEmbed()
             .primaryColor();

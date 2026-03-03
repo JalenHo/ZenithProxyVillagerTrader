@@ -17,6 +17,7 @@ public class VillagerTraderConfig {
     public long waitForInteractTimeoutTicks = 20L;
     public long restockWaitTicks = 6000L; // 5 minutes (6000 ticks / 20 tps)
     public boolean logTradeStatusToDiscord = false;
+    public boolean autoDisableOnNonFriend = true;
 
     public LinkedHashMap<String, Trade> trades = new LinkedHashMap<>();
 

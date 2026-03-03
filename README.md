@@ -12,6 +12,7 @@ Includes automatic restocking, storing, multiple backup chests, restock waiting,
 * Added restock wait feature - bot pauses and retries when all villagers are out of stock
 * Added multiple backup chests - bot sequentially withdraws from backup chests when the primary input chest runs out, good for automatic farms
 * Fixed Discord trade status notifications not triggering during restock wait
+* Added auto-disable on non-friend player detection - bot automatically turns off when a non-friend player enters visual range
 
 ## Usage
 
@@ -37,6 +38,8 @@ You need the following setup ingame:
 * `trader waitForInteractionTimeout <ticks>`
 * `trader restockWaitTime <ticks>`
   * How long to wait when all villagers are out of stock before retrying (default: 6000 ticks = 5 minutes)
+* `trader autoDisableOnNonFriend on/off`
+  * Auto-disable the trader when a non-friend player is detected in visual range (default: on)
 * `trader set <id> backupChests add <x> <y> <z>`
   * Adds a backup chest for input item 1
 * `trader set <id> backupChests del <index>`
@@ -55,6 +58,8 @@ It will repeatedly attempt all configured trades one at a time.
 When all villagers are out of stock, the bot will wait for the configured restock time before retrying.
 
 When the primary input chest runs out, the bot will automatically try each backup chest in order until it has enough items or all chests are exhausted.
+
+If `autoDisableOnNonFriend` is enabled (default), the bot will automatically disable itself when any non-friend player is detected in visual range. Add trusted players to ZenithProxy's friend list with `friend add <player>`.
 
 ## Thanks
 
